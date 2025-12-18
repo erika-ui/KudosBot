@@ -2,6 +2,7 @@ import os
 import datetime
 import random
 import threading
+import certifi
 from dotenv import load_dotenv
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from slack_bolt import App
@@ -25,7 +26,7 @@ if not MONGO_URI:
     print("❌ ERROR: No se encontró la variable MONGO_URI")
     exit(1)
 
-client = MongoClient(MONGO_URI)
+client = client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
 db = client.get_database("kudos_db") 
 collection = db.transacciones     
 
