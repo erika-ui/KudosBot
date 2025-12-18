@@ -116,6 +116,7 @@ def generar_bloques_stats(user_id):
     return bloques
 
 # --- INTERACCIONES ---
+@app.shortcut("dar_kudos_atajo")
 @app.command("/dar-kudos")
 def abrir_modal_kudos(ack, body, client):
     ack()
@@ -185,6 +186,7 @@ def manejar_envio_modal(ack, body, view, client):
     except Exception as e:
         print(f"Error Slack: {e}")
 
+@app.shortcut("leaderboard")
 @app.command("/leaderboard")
 def mostrar_leaderboard(ack, say):
     ack()
@@ -242,6 +244,7 @@ def action_mis_stats(ack, body, client):
     bloques = generar_bloques_stats(user_id)
     client.chat_postEphemeral(channel=body["channel"]["id"], user=user_id, blocks=bloques, text="Tus stats")
 
+@app.shortcut("mis-kudos")
 @app.command("/mis-kudos")
 def command_mis_stats(ack, body, client):
     ack()
