@@ -26,13 +26,13 @@ if not MONGO_URI:
     print("❌ ERROR: No se encontró la variable MONGO_URI")
     exit(1)
 
-client = client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
+# Agregamos tlsCAFile para Render
+client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
 db = client.get_database("kudos_db") 
 collection = db.transacciones     
 
 # --- FUNCIONES DE BASE DE DATOS ---
 def guardar_transaccion(nueva_data):
-    """Inserta un diccionario en MongoDB"""
     try:
         collection.insert_one(nueva_data)
         print("✅ Transacción guardada en Mongo")
@@ -40,7 +40,6 @@ def guardar_transaccion(nueva_data):
         print(f"❌ Error guardando en Mongo: {e}")
 
 def cargar_transacciones():
-    """Descarga todo el historial de MongoDB"""
     try:
         return list(collection.find({}, {"_id": 0}))
     except Exception as e:
@@ -116,10 +115,14 @@ def generar_bloques_stats(user_id):
     return bloques
 
 # --- INTERACCIONES ---
+
+# 1. DAR KUDOS (Corregido el error de doble llamada)
 @app.shortcut("dar_kudos_atajo")
 @app.command("/dar-kudos")
 def abrir_modal_kudos(ack, body, client):
     ack()
+    
+    # Definimos el modal UNA sola vez
     modal_view = {
         "type": "modal",
         "callback_id": "kudos_modal_submission",
@@ -142,7 +145,10 @@ def abrir_modal_kudos(ack, body, client):
             },
         ]
     }
+    
+    # Llamamos a Slack UNA sola vez con la vista completa
     client.views_open(trigger_id=body["trigger_id"], view=modal_view)
+
 
 @app.view("kudos_modal_submission")
 def manejar_envio_modal(ack, body, view, client):
@@ -186,13 +192,25 @@ def manejar_envio_modal(ack, body, view, client):
     except Exception as e:
         print(f"Error Slack: {e}")
 
+# 2. LEADERBOARD
 @app.shortcut("leaderboard")
 @app.command("/leaderboard")
-def mostrar_leaderboard(ack, say):
+def mostrar_leaderboard(ack, say, body, client):
     ack()
     totales = calcular_totales()
+    
+    # Lógica para determinar el canal (Para evitar errores si se llama desde un shortcut global)
+    # Si viene de un comando tiene channel_id, si es shortcut global a veces no.
+    # Usaremos 'say' si está disponible, si no, intentamos enviar mensaje directo.
+    channel_id = body.get("channel_id")
+    user_id = body.get("user_id") or body.get("user", {}).get("id")
+
     if not totales:
-        say("Aún no hay puntos. ¡Sé el primero en dar kudos! 🚀")
+        mensaje_vacio = "Aún no hay puntos. ¡Sé el primero en dar kudos! 🚀"
+        if channel_id:
+            say(mensaje_vacio)
+        else:
+             client.chat_postEphemeral(channel=user_id, user=user_id, text=mensaje_vacio)
         return
     
     sorted_db = sorted(totales.items(), key=lambda item: item[1], reverse=True)[:10]
@@ -235,8 +253,16 @@ def mostrar_leaderboard(ack, say):
             }
         ]
     })
-    say(blocks=bloques, text="Leaderboard")
+    
+    # Enviar al canal correcto
+    if channel_id:
+        say(blocks=bloques, text="Leaderboard")
+    else:
+        # Si es un atajo global, lo mandamos como efímero al usuario porque no sabemos en qué canal está
+        client.chat_postEphemeral(channel=user_id, user=user_id, blocks=bloques, text="Leaderboard")
 
+
+# 3. MIS KUDOS (Corregido extracción de ID)
 @app.action("mis_stats")
 def action_mis_stats(ack, body, client):
     ack()
@@ -248,9 +274,15 @@ def action_mis_stats(ack, body, client):
 @app.command("/mis-kudos")
 def command_mis_stats(ack, body, client):
     ack()
-    user_id = body["user_id"]
+    # CORRECCIÓN IMPORTANTE:
+    # Intentamos sacar el ID de command (user_id) O de shortcut (user.id)
+    user_id = body.get("user_id") or body.get("user", {}).get("id")
+    
+    # Lo mismo para el canal ID
+    channel_id = body.get("channel_id") or user_id # Si no hay canal, usaremos el ID de usuario para DM
+
     bloques = generar_bloques_stats(user_id)
-    client.chat_postEphemeral(channel=body["channel_id"], user=user_id, blocks=bloques, text="Tus stats")
+    client.chat_postEphemeral(channel=channel_id, user=user_id, blocks=bloques, text="Tus stats")
 
 # --- HEALTH CHECK ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
