@@ -1,7 +1,9 @@
 import os
 import datetime
 import random
+import threading
 from dotenv import load_dotenv
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from pymongo import MongoClient
@@ -246,6 +248,24 @@ def command_mis_stats(ack, body, client):
     bloques = generar_bloques_stats(user_id)
     client.chat_postEphemeral(channel=body["channel_id"], user=user_id, blocks=bloques, text="Tus stats")
 
+# --- HEALTH CHECK ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        pass
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 10000)) 
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"🏥 Health Check corriendo en el puerto {port}")
+    server.serve_forever()
+
 if __name__ == "__main__":
-    print("🤖 Bot conectando a la nube...")
+    print("🚀 Iniciando servidor Health Check...")
+    threading.Thread(target=run_health_check_server, daemon=True).start()
+    
+    print("🤖 Bot conectando a Slack...")
     SocketModeHandler(app, SLACK_APP_TOKEN).start()
