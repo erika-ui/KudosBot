@@ -144,10 +144,11 @@ def abrir_modal_kudos(ack, body, client):
                 "label": {"type": "plain_text", "text": "Tu mensaje de agradecimiento 🖊️"}
             },
         ]
-    }
-    
-    # Llamamos a Slack UNA sola vez con la vista completa
-    client.views_open(trigger_id=body["trigger_id"], view=modal_view)
+    }   
+    try:
+        client.views_open(trigger_id=body["trigger_id"], view=modal_view)
+    except Exception as e:
+        print(f"❌ Error abriendo modal: {e}")
 
 
 @app.view("kudos_modal_submission")
@@ -193,29 +194,30 @@ def manejar_envio_modal(ack, body, view, client):
         print(f"Error Slack: {e}")
 
 # 2. LEADERBOARD
+# Reemplaza la función mostrar_leaderboard completa por esta:
 @app.shortcut("leaderboard")
 @app.command("/leaderboard")
-def mostrar_leaderboard(ack, say, body, client):
+def mostrar_leaderboard(ack, body, client):
     ack()
-    totales = calcular_totales()
     
-    # Lógica para determinar el canal (Para evitar errores si se llama desde un shortcut global)
-    # Si viene de un comando tiene channel_id, si es shortcut global a veces no.
-    # Usaremos 'say' si está disponible, si no, intentamos enviar mensaje directo.
-    channel_id = body.get("channel_id")
+    # 1. Extracción Universal de IDs (Funciona para Comando y Atajo)
     user_id = body.get("user_id") or body.get("user", {}).get("id")
-
+    channel_id = body.get("channel_id") # Será None si es un atajo global
+    
+    # 2. Cálculos
+    totales = calcular_totales()
     if not totales:
-        mensaje_vacio = "Aún no hay puntos. ¡Sé el primero en dar kudos! 🚀"
+        msg = "Aún no hay puntos. ¡Sé el primero en dar kudos! 🚀"
         if channel_id:
-            say(mensaje_vacio)
+            client.chat_postMessage(channel=channel_id, text=msg)
         else:
-             client.chat_postEphemeral(channel=user_id, user=user_id, text=mensaje_vacio)
+            client.chat_postMessage(channel=user_id, text=msg) # DM si es atajo
         return
     
     sorted_db = sorted(totales.items(), key=lambda item: item[1], reverse=True)[:10]
     fecha_actual = datetime.datetime.now().strftime("%B %Y")
     
+    # 3. Construcción de Bloques
     bloques = [
         {"type": "header", "text": {"type": "plain_text", "text": "🏆 Leaderboard", "emoji": True}},
         {"type": "context", "elements": [{"type": "mrkdwn", "text": f"Global · *{fecha_actual}*"}]},
@@ -254,35 +256,42 @@ def mostrar_leaderboard(ack, say, body, client):
         ]
     })
     
-    # Enviar al canal correcto
-    if channel_id:
-        say(blocks=bloques, text="Leaderboard")
-    else:
-        # Si es un atajo global, lo mandamos como efímero al usuario porque no sabemos en qué canal está
-        client.chat_postEphemeral(channel=user_id, user=user_id, blocks=bloques, text="Leaderboard")
+    try:
+        if channel_id:
+            client.chat_postMessage(channel=channel_id, blocks=bloques, text="Leaderboard")
+        else:
+            client.chat_postMessage(channel=user_id, blocks=bloques, text="Leaderboard")
+    except Exception as e:
+        print(f"❌ Error enviando leaderboard: {e}")
 
 
-# 3. MIS KUDOS (Corregido extracción de ID)
+# MIS KUDOS 
 @app.action("mis_stats")
 def action_mis_stats(ack, body, client):
     ack()
     user_id = body["user"]["id"]
-    bloques = generar_bloques_stats(user_id)
-    client.chat_postEphemeral(channel=body["channel"]["id"], user=user_id, blocks=bloques, text="Tus stats")
-
-@app.shortcut("mis-kudos")
-@app.command("/mis-kudos")
-def command_mis_stats(ack, body, client):
-    ack()
-    # CORRECCIÓN IMPORTANTE:
-    # Intentamos sacar el ID de command (user_id) O de shortcut (user.id)
-    user_id = body.get("user_id") or body.get("user", {}).get("id")
-    
-    # Lo mismo para el canal ID
-    channel_id = body.get("channel_id") or user_id # Si no hay canal, usaremos el ID de usuario para DM
-
+    channel_id = body["channel"]["id"]
     bloques = generar_bloques_stats(user_id)
     client.chat_postEphemeral(channel=channel_id, user=user_id, blocks=bloques, text="Tus stats")
+
+@app.shortcut("mis-kudos")  
+@app.command("/mis-kudos")  
+def command_mis_stats(ack, body, client):
+    ack()
+    
+    user_id = body.get("user_id") or body.get("user", {}).get("id")
+    channel_id = body.get("channel_id") 
+
+    bloques = generar_bloques_stats(user_id)
+
+    try:
+        if channel_id:
+            client.chat_postEphemeral(channel=channel_id, user=user_id, blocks=bloques, text="Tus stats")
+        else:
+            client.chat_postMessage(channel=user_id, blocks=bloques, text="Tus stats")
+    except Exception as e:
+        print(f"❌ Error enviando stats: {e}")
+
 
 # --- HEALTH CHECK ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
