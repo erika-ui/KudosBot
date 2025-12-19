@@ -1,19 +1,14 @@
-import os
 import certifi
 from pymongo import MongoClient
-from dotenv import load_dotenv
 
-load_dotenv()
-
-MONGO_URI = os.getenv("MONGO_URI") 
-
-if not MONGO_URI:
-    print("❌ Error: No tengo la MONGO_URI")
-    exit()
+# --- PEGA AQUÍ TU URL DIRECTAMENTE ---
+# Asegúrate de reemplazar <password> por tu contraseña real
+MONGO_URI = "mongodb+srv://erika_db_user:lOvgbL6Fu6rq9zlQ@cluster0.rdurzcx.mongodb.net/?retryWrites=true&w=majority"
 
 print("⏳ Conectando a la base de datos...")
+
 try:
-    # Conexión
+    # Conexión directa
     client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
     db = client.get_database("kudos_db")
     collection = db.transacciones
@@ -25,10 +20,10 @@ try:
     if cantidad == 0:
         print("✅ La base de datos ya está vacía.")
     else:
+        # Pregunta de seguridad
         confirmacion = input("⚠️ ¿Estás seguro de borrar TODO el historial? (escribe 'si'): ")
         
         if confirmacion.lower() == "si":
-            # --- AQUÍ OCURRE EL BORRADO ---
             collection.delete_many({}) 
             print("🗑️ ¡Registros eliminados correctamente!")
             print("✨ La base de datos está lista para producción (0 kudos).")
@@ -36,4 +31,5 @@ try:
             print("🚫 Operación cancelada.")
 
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"❌ Error de conexión: {e}")
+    print("Consejo: Verifica que tu usuario y contraseña en la URL sean correctos.")
